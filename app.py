@@ -1,49 +1,44 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
-# Define a function to transform the data
-def transform_data(df, user_id):
-    # Filter the data to only include the specified user ID
-    user_data = df[df["User ID"] == user_id]
-    
-    # Calculate the duration for each row
-    user_data["Duration"] = pd.to_datetime(user_data["Left (Local)"]) - pd.to_datetime(user_data["Joined (Local)"])
-    
-    # Find the minimum Joined (Local) and maximum Left (Local) for the user
-    min_joined = user_data["Joined (Local)"].min()
-    max_left = user_data["Left (Local)"].max()
-    
-    # Filter the user data to only include rows where the Joined (Local) is equal to the minimum and the Left (Local) is equal to the maximum
-    user_duration = user_data[(user_data["Joined (Local)"] == min_joined) & (user_data["Left (Local)"] == max_left)]
-    
-    # Drop the Peer ID and Role columns, as they are the same for all rows in the user_duration dataframe
-    user_duration = user_duration.drop(["Peer ID", "Role"], axis=1)
-    
-    # Return the transformed data
-    return user_duration
+# Define function to extract relevant data for a given user ID
+def extract_user_data(df, user_id):
+    user_data = df[df['User ID'] == user_id].copy()
+    if len(user_data) > 0:
+        user_data['Joined (Local)'] = pd.to_datetime(user_data['Joined (Local)'])
+        user_data['Left (Local)'] = pd.to_datetime(user_data['Left (Local)'])
+        duration = (user_data['Joined (Local)'].min() - user_data['Left (Local)'].max()).total_seconds()
+        user_data = user_data[['Name', 'Role', 'User ID', 'Duration', 'Joined (Local)', 'Left (Local)']].iloc[0]
+        user_data['Duration'] = duration
+        return user_data
+    else:
+        return None
 
-# Define the Streamlit app
-def app():
-    st.title("Transform CSV data")
-    
-    # Allow the user to upload a CSV file
-    file = st.file_uploader("Upload a CSV file", type=["csv"])
-    
-    if file is not None:
-        # Load the CSV file into a Pandas dataframe
-        df = pd.read_csv(file)
-        
-        # Allow the user to select a User ID
-        user_id = st.selectbox("Select a User ID", df["User ID"].unique())
-        
-        # Transform the data for the selected User ID
-        transformed_data = transform_data(df, user_id)
-        
-        # Display the transformed data in a table
-        st.write(transformed_data)
-        
-        # Add a download button for the transformed data
-        csv = transformed_data.to_csv(index=False)
-        b64 = base64.b64encode(csv.encode()).decode()
-        href = f'<a href="data:file/csv;base64,{b64}" download="transformed_data.csv">Download CSV file</a>'
-        st.markdown(href, unsafe_allow_html=True)
+# Define Streamlit app
+def main():
+    # Set page title
+    st.set_page_config(page_title='User Data Extractor')
+
+    # Add file upload widget to sidebar
+    uploaded_file = st.sidebar.file_uploader('Upload a CSV file', type='csv')
+
+    # If file is uploaded, read it into a DataFrame
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+
+        # Add user ID selection widget to sidebar
+        user_id = st.sidebar.selectbox('Select a User ID', df['User ID'].unique())
+
+        # If user ID is selected, extract relevant data and display in table format
+        if user_id:
+            user_data = extract_user_data(df, user_id)
+            if user_data is not None:
+                st.write('User Data for User ID:', user_id)
+                st.write(user_data)
+                st.download_button('Download User Data as CSV', pd.DataFrame(user_data).T.to_csv(), file_name=f'user_{user_id}.csv', mime='text/csv')
+            else:
+                st.write('No data found for User ID:', user_id)
+
+# Run the app
+if __name__ == '__main__':
+    main()
